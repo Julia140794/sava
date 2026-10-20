@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { intakeReady, services, siteUrl } from "@/lib/studio";
+import { classifyTelegramError } from "@/lib/telegram-errors";
 export const runtime = "nodejs";
 const attempts = new Map<string, { count: number; until: number }>();
 const reply = (error: string, status: number) =>
@@ -152,22 +153,7 @@ export async function POST(request: NextRequest) {
       );
       const data = await result.json();
       if (!result.ok || data.ok !== true) {
-        const description =
-          typeof data.description === "string"
-            ? data.description.toLowerCase()
-            : "";
-        const code =
-          result.status === 401 || result.status === 404
-            ? "INVALID_TOKEN"
-            : description.includes("chat not found")
-              ? "CHAT_NOT_FOUND"
-              : description.includes("blocked")
-                ? "BOT_BLOCKED"
-                : description.includes("can't initiate")
-                  ? "START_REQUIRED"
-                  : result.status === 429
-                    ? "RATE_LIMITED"
-                    : "TELEGRAM_REJECTED";
+        const code = classifyTelegramError(result.status, data.description);
         console.error(
           `SAVA_DELIVERY channel=telegram code=${code} status=${result.status}`,
         );
