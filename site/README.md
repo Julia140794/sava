@@ -52,3 +52,15 @@ API валидирует имя, телефон, услугу, согласие 
 Привязка: существующий проект Netlify → Project configuration → Build & deploy → Continuous deployment → Repository → Link repository → GitHub → Julia140794/sava → main. Если base уже задан в интерфейсе, сверить его с site из netlify.toml, не добавлять site дважды. Package directory при обычной структуре можно оставить пустым. Установить полный SITE_URL из фактического production domain Netlify (не URL панели app.netlify.com). После изменения переменных запустить новую production-сборку. Секреты должны быть доступны серверным Functions, а SITE_URL и LEAD_INTAKE_ENABLED также сборке.
 
 Сохранение ключей в облачной среде Codex отдельно от переменных Netlify. Токены Netlify и API-ключи нельзя коммитить. Для прямого управления через API нужны отдельный доступ к аккаунту и API ID проекта; в текущей среде такого доступа пока нет. Сохранение netlify.toml само по себе не подтверждает привязку проекта или публикацию.
+
+## Диагностика доставки
+
+В логах серверной функции Netlify ищите SAVA_DELIVERY. Строки не содержат токенов, имён, телефонов или исходных ответов сервисов.
+
+- channel=telegram code=DELIVERED — Telegram подтвердил приём сообщения.
+- INVALID_TOKEN — Telegram отверг токен; CHAT_NOT_FOUND — проверьте числовой chat_id и /start; BOT_BLOCKED — разблокируйте бота; START_REQUIRED — отправьте /start; RATE_LIMITED — лимит Telegram.
+- channel=database code=DELIVERED — Supabase подтвердил запись.
+- PGRST205/42P01 — проверьте наличие public.leads из supabase/leads.sql; 42501 — проверьте серверный ключ и права; PGRST204 — структура таблицы не совпадает с ожидаемой.
+- CONNECTION_OR_CONFIG_ERROR / CONNECTION_OR_RESPONSE_ERROR — нужна проверка URL, сетевого доступа и формата настроек.
+
+Ключи обрезают случайные пробелы по краям перед использованием. Публичный текст ошибки остаётся общим. Новая диагностика помогает найти причину, но не подтверждает исправление внешних настроек.

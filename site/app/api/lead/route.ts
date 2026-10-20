@@ -94,8 +94,8 @@ export async function POST(request: NextRequest) {
   const database = async () => {
     try {
       const client = createClient(
-        process.env.SUPABASE_URL!,
-        process.env.SUPABASE_SECRET_KEY!,
+        process.env.SUPABASE_URL!.trim(),
+        process.env.SUPABASE_SECRET_KEY!.trim(),
         {
           auth: { persistSession: false, autoRefreshToken: false },
           global: {
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
           },
         },
       );
-      const { error } = await client.from("leads").insert({
+      const { error, status } = await client.from("leads").insert({
         name,
         phone,
         service: selected.name,
@@ -113,8 +113,21 @@ export async function POST(request: NextRequest) {
         utm,
         consent: true,
       });
+      if (error) {
+        const code = /^[A-Z0-9_]{1,20}$/.test(error.code || "")
+          ? error.code
+          : "DATABASE_ERROR";
+        console.error(
+          `SAVA_DELIVERY channel=database code=${code} status=${status}`,
+        );
+      } else {
+        console.info("SAVA_DELIVERY channel=database code=DELIVERED");
+      }
       return !error;
     } catch {
+      console.error(
+        "SAVA_DELIVERY channel=database code=CONNECTION_OR_CONFIG_ERROR",
+      );
       return false;
     }
   };
@@ -126,21 +139,46 @@ export async function POST(request: NextRequest) {
         timeZone: "Europe/Minsk",
       }).format(new Date());
       const result = await fetch(
-        `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+        `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN!.trim()}/sendMessage`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            chat_id: process.env.TELEGRAM_CHAT_ID,
+            chat_id: process.env.TELEGRAM_CHAT_ID!.trim(),
             text: `Новая заявка SAVA\n${selected.name}\nИмя: ${name}\nТелефон: ${phone}\nПожелания: ${message || "—"}\nСтраница: ${page || "—"}\nUTM: ${JSON.stringify(utm)}\nСогласие: получено\n${timestamp} (Минск)`,
           }),
           signal: AbortSignal.timeout(10000),
         },
       );
-      if (!result.ok) return false;
       const data = await result.json();
-      return data.ok === true;
+      if (!result.ok || data.ok !== true) {
+        const description =
+          typeof data.description === "string"
+            ? data.description.toLowerCase()
+            : "";
+        const code =
+          result.status === 401 || result.status === 404
+            ? "INVALID_TOKEN"
+            : description.includes("chat not found")
+              ? "CHAT_NOT_FOUND"
+              : description.includes("blocked")
+                ? "BOT_BLOCKED"
+                : description.includes("can't initiate")
+                  ? "START_REQUIRED"
+                  : result.status === 429
+                    ? "RATE_LIMITED"
+                    : "TELEGRAM_REJECTED";
+        console.error(
+          `SAVA_DELIVERY channel=telegram code=${code} status=${result.status}`,
+        );
+        return false;
+      }
+      console.info("SAVA_DELIVERY channel=telegram code=DELIVERED");
+      return true;
     } catch {
+      console.error(
+        "SAVA_DELIVERY channel=telegram code=CONNECTION_OR_RESPONSE_ERROR",
+      );
       return false;
     }
   };
