@@ -3,7 +3,10 @@ import { test } from "node:test";
 import { NextRequest } from "next/server";
 import { POST as lead } from "../app/api/lead/route.ts";
 import { POST as webhook } from "../app/api/telegram/webhook/route.ts";
-import { POST as setup } from "../app/api/telegram/setup/route.ts";
+import {
+  POST as setup,
+  GET as setupStatus,
+} from "../app/api/telegram/setup/route.ts";
 import { parseAppointment } from "../lib/telegram-booking.ts";
 
 test("confirmation workflow: recipient binding, owner authorization, date preview and single delivery", async (t) => {
@@ -323,6 +326,47 @@ test("confirmation workflow: recipient binding, owner authorization, date previe
           });
         assert.equal((await setup(req("wrong"))).status, 403);
         assert.equal((await setup(req("a".repeat(64)))).status, 200);
+      },
+    );
+    await t.test(
+      "setup diagnoses missing and malformed secrets without exposing values",
+      async () => {
+        const configured = process.env.TELEGRAM_WEBHOOK_SECRET;
+        try {
+          delete process.env.TELEGRAM_WEBHOOK_SECRET;
+          const missing = await (await setupStatus()).json();
+          assert.equal(missing.secretConfigured, false);
+          const req = new Request(
+            "https://savae.netlify.app/api/telegram/setup",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ secret: "a".repeat(64) }),
+            },
+          );
+          const res = await setup(req);
+          assert.equal(res.status, 503);
+          assert((await res.json()).error.includes("Production"));
+          process.env.TELEGRAM_WEBHOOK_SECRET = "invalid short secret";
+          const malformed = await (await setupStatus()).json();
+          assert.equal(malformed.secretFormatValid, false);
+          assert(!JSON.stringify(malformed).includes("invalid short secret"));
+          process.env.TELEGRAM_WEBHOOK_SECRET = configured;
+          const status = await setupStatus();
+          assert.equal(status.headers.get("cache-control"), "no-store");
+          assert(!JSON.stringify(await status.json()).includes(configured));
+          const padded = new Request(
+            "https://savae.netlify.app/api/telegram/setup",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ secret: "  " + configured + "\n" }),
+            },
+          );
+          assert.equal((await setup(padded)).status, 200);
+        } finally {
+          process.env.TELEGRAM_WEBHOOK_SECRET = configured;
+        }
       },
     );
     await t.test(

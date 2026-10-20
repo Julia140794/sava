@@ -9,6 +9,21 @@ import {
 } from "@/lib/telegram-booking";
 import { siteUrl } from "@/lib/studio";
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+// Public readiness metadata only: never return a secret, digest, token or chat ID.
+export async function GET() {
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || "";
+  return NextResponse.json(
+    {
+      secretConfigured: Boolean(secret),
+      secretFormatValid: /^[A-Za-z0-9_-]{32,256}$/.test(secret),
+      confirmationsEnabled:
+        process.env.TELEGRAM_CONFIRMATIONS_ENABLED?.trim() === "true",
+      siteUrlConfigured: Boolean(siteUrl()?.startsWith("https://")),
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
 export async function POST(request: Request) {
   const origin = request.headers.get("origin");
   if (origin && origin !== new URL(request.url).origin && origin !== siteUrl())
@@ -27,12 +42,29 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Неверный запрос" }, { status: 400 });
   }
+  const configuredSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || "";
+  if (!configuredSecret)
+    return NextResponse.json(
+      {
+        error:
+          "В опубликованной версии Netlify отсутствует TELEGRAM_WEBHOOK_SECRET. Заполните Production, включите Functions и запустите новую публикацию.",
+      },
+      { status: 503 },
+    );
+  if (!/^[A-Za-z0-9_-]{32,256}$/.test(configuredSecret))
+    return NextResponse.json(
+      {
+        error:
+          "Секрет в Netlify имеет неверный формат. Нужны 32–256 латинских букв, цифр, символов _ или -.",
+      },
+      { status: 503 },
+    );
   if (
     !body ||
     typeof body !== "object" ||
     !("secret" in body) ||
     typeof body.secret !== "string" ||
-    !authorizedSecret(body.secret)
+    !authorizedSecret(body.secret.trim())
   )
     return NextResponse.json(
       { error: "Секрет не совпадает с TELEGRAM_WEBHOOK_SECRET в Netlify" },

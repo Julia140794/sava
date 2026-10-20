@@ -1,9 +1,41 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 export default function TelegramSetup() {
   const [secret, setSecret] = useState(""),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
+  const [serverStatus, setServerStatus] = useState(
+    "Проверяем настройки опубликованного сайта…",
+  );
+  useEffect(() => {
+    let active = true;
+    fetch("/api/telegram/setup", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw Error();
+        const state = await response.json();
+        if (active)
+          setServerStatus(
+            !state.secretConfigured
+              ? "Сервер не получил секрет из Netlify. Проверьте значение для Production и доступ Functions, затем выполните новую публикацию."
+              : !state.secretFormatValid
+                ? "Секрет на сервере имеет неверный формат. Используйте секрет, созданный этой страницей."
+                : !state.confirmationsEnabled
+                  ? "Секрет на сервере есть. Для подключения включите TELEGRAM_CONFIRMATIONS_ENABLED=true в Netlify и выполните новую публикацию."
+                  : !state.siteUrlConfigured
+                    ? "Секрет на сервере есть. Проверьте полный HTTPS-адрес в SITE_URL."
+                    : "Секрет на сервере сохранён, функция включена. Введите то же значение, которое сохранено в Netlify.",
+          );
+      })
+      .catch(() => {
+        if (active)
+          setServerStatus(
+            "Не удалось проверить настройки сервера. Обновите страницу после публикации.",
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   function generate() {
     const bytes = crypto.getRandomValues(new Uint8Array(32));
     setSecret(
@@ -21,7 +53,7 @@ export default function TelegramSetup() {
       const res = await fetch("/api/telegram/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret }),
+        body: JSON.stringify({ secret: secret.trim() }),
       });
       const body = await res.json();
       setMessage(
@@ -73,6 +105,9 @@ export default function TelegramSetup() {
         обслуживает другой сайт или сервис, подключение заменит его обработчик
         входящих сообщений.
       </p>
+      <p className="intake-notice" role="status">
+        {serverStatus}
+      </p>
       <form className="setup-form" onSubmit={submit}>
         <label htmlFor="webhook-secret">Секрет подключения</label>
         <input
@@ -83,7 +118,7 @@ export default function TelegramSetup() {
           maxLength={256}
           pattern="[A-Za-z0-9_-]{32,256}"
           value={secret}
-          onChange={(e) => setSecret(e.target.value)}
+          onChange={(e) => setSecret(e.target.value.trim())}
           required
         />
         <div className="setup-actions">
