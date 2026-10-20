@@ -1,3 +1,6 @@
 # Временные секреты и настройки владельца
 .env*
 !.env.example
+
+# Local Netlify state and build output
+.netlify/

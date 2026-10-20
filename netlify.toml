@@ -1,0 +1,12 @@
+[build]
+  base = "site"
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "24"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+# Next.js server rendering, API routes and image optimization on Netlify.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
