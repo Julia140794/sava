@@ -1,3 +1,11 @@
+import { randomBytes, randomUUID } from "node:crypto";
+import {
+  bookingDb,
+  botCall,
+  confirmationsReady,
+  hashLink,
+  scheduleKeyboard,
+} from "@/lib/telegram-booking";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { intakeReady, services, siteUrl } from "@/lib/studio";
@@ -92,6 +100,7 @@ export async function POST(request: NextRequest) {
         typeof value === "string"
       )
         utm[key] = value.slice(0, 200);
+  const leadId = randomUUID();
   const database = async () => {
     try {
       const client = createClient(
@@ -106,6 +115,7 @@ export async function POST(request: NextRequest) {
         },
       );
       const { error, status } = await client.from("leads").insert({
+        id: leadId,
         name,
         phone,
         service: selected.name,
@@ -132,6 +142,27 @@ export async function POST(request: NextRequest) {
       return false;
     }
   };
+  const saved = await database();
+  let telegramUrl: string | null = null;
+  if (saved && confirmationsReady()) {
+    try {
+      const me = await botCall("getMe");
+      if (!/^[A-Za-z0-9_]{5,32}$/.test(me.username || "")) throw Error();
+      const linkToken = randomBytes(32).toString("base64url");
+      const { error } = await bookingDb()
+        .from("telegram_bookings")
+        .insert({
+          id: leadId,
+          token_hash: hashLink(linkToken),
+          expires_at: new Date(Date.now() + 86400000).toISOString(),
+          service: selected.name,
+        });
+      if (error) throw Error();
+      telegramUrl = `https://t.me/${me.username}?start=${linkToken}`;
+    } catch {
+      console.error("SAVA_CONFIRMATION code=LINK_SETUP_FAILED");
+    }
+  }
   const telegram = async () => {
     try {
       const timestamp = new Intl.DateTimeFormat("ru-BY", {
@@ -146,7 +177,8 @@ export async function POST(request: NextRequest) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             chat_id: process.env.TELEGRAM_CHAT_ID!.trim(),
-            text: `Новая заявка SAVA\n${selected.name}\nИмя: ${name}\nТелефон: ${phone}\nПожелания: ${message || "—"}\nСтраница: ${page || "—"}\nUTM: ${JSON.stringify(utm)}\nСогласие: получено\n${timestamp} (Минск)`,
+            ...(telegramUrl ? { reply_markup: scheduleKeyboard(leadId) } : {}),
+            text: `Новая заявка SAVA${telegramUrl ? `\nЗаявка: ${leadId.slice(0, 8)}` : ""}\n${selected.name}\nИмя: ${name}\nТелефон: ${phone}\nПожелания: ${message || "—"}\nСтраница: ${page || "—"}\nUTM: ${JSON.stringify(utm)}\nСогласие: получено\n${timestamp} (Минск)`,
           }),
           signal: AbortSignal.timeout(10000),
         },
@@ -168,10 +200,13 @@ export async function POST(request: NextRequest) {
       return false;
     }
   };
-  const [saved, notified] = await Promise.all([database(), telegram()]);
+  const notified = await telegram();
   if (!saved) console.error("Lead database delivery failed");
   if (!notified) console.error("Lead notification delivery failed");
   if (!saved && !notified)
     return reply("Не удалось отправить заявку. Попробуйте позднее", 502);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    ...(telegramUrl ? { telegramUrl } : {}),
+  });
 }

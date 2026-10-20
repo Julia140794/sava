@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { contact, services } from "@/lib/studio";
 export default function Booking({ ready }: { ready: boolean }) {
   const [service, setService] = useState("");
+  const [telegramUrl, setTelegramUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<
     "idle" | "sending" | "success" | "error"
   >("idle");
@@ -24,6 +25,7 @@ export default function Booking({ ready }: { ready: boolean }) {
     const data = new FormData(form);
     setStatus("sending");
     setMessage("");
+    setTelegramUrl(null);
     try {
       const utm = Object.fromEntries(
         [...new URLSearchParams(window.location.search)].filter(([k]) =>
@@ -49,6 +51,16 @@ export default function Booking({ ready }: { ready: boolean }) {
         throw new Error(
           response.error || "Не удалось отправить заявку. Попробуйте позднее.",
         );
+      if (typeof response.telegramUrl === "string") {
+        try {
+          const u = new URL(response.telegramUrl);
+          if (
+            u.origin === "https://t.me" &&
+            /^\/[A-Za-z0-9_]{5,32}$/.test(u.pathname)
+          )
+            setTelegramUrl(u.href);
+        } catch {}
+      }
       setStatus("success");
       form.reset();
       setService("");
@@ -63,6 +75,8 @@ export default function Booking({ ready }: { ready: boolean }) {
   }
   return (
     <form
+      method="post"
+      action="/api/lead"
       onSubmit={submit}
       className="booking-form"
       aria-label="Заявка на запись"
@@ -181,6 +195,23 @@ export default function Booking({ ready }: { ready: boolean }) {
           ? "Спасибо! Заявка получена. Студия свяжется с вами для согласования визита. Время пока не забронировано."
           : message}
       </p>
+      {status === "success" && telegramUrl && (
+        <div className="telegram-followup">
+          <a
+            className="button button-wine"
+            href={telegramUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Получить подтверждение в Telegram
+          </a>
+          <p>
+            Откройте бота и нажмите Start. После согласования времени студия
+            отправит подтверждение сюда. Ссылка действует 24 часа — не
+            пересылайте её другим людям.
+          </p>
+        </div>
+      )}
       <p className="form-footnote">
         Заявка — первый шаг. Дату, время и стоимость согласуем лично
       </p>

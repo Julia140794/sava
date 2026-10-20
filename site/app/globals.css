@@ -1441,3 +1441,64 @@ details[open] summary span {
   text-underline-offset: 3px;
   white-space: nowrap;
 }
+
+.telegram-followup {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 20px;
+}
+.telegram-followup .button {
+  width: 100%;
+  text-align: center;
+  justify-content: center;
+  gap: 0;
+  white-space: normal;
+}
+.telegram-followup p {
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: 12px;
+  color: var(--muted);
+}
+.setup-form {
+  margin-top: 30px;
+  padding: 24px;
+  border: 1px solid var(--line);
+}
+.setup-form label {
+  display: block;
+  margin-bottom: 10px;
+}
+.setup-form input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--muted);
+  background: white;
+}
+.setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 20px 0;
+}
+.setup-actions button {
+  background: var(--wine);
+  color: var(--cream);
+  border: 0;
+  padding: 12px 16px;
+  min-height: 44px;
+  border-radius: 2px;
+}
+.setup-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.privacy-page code {
+  overflow-wrap: anywhere;
+}
+.privacy-page ol {
+  padding-left: 22px;
+}
+.privacy-page li {
+  margin: 12px 0;
+}

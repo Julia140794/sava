@@ -3,7 +3,11 @@ import { siteUrl } from "@/lib/studio";
 export default function robots(): MetadataRoute.Robots {
   const origin = siteUrl();
   return {
-    rules: { userAgent: "*", allow: "/", disallow: ["/api/", "/privacy"] },
+    rules: {
+      userAgent: "*",
+      allow: "/",
+      disallow: ["/api/", "/privacy", "/telegram-setup"],
+    },
     ...(origin ? { sitemap: `${origin}/sitemap.xml` } : {}),
   };
 }
