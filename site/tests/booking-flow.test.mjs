@@ -11,6 +11,7 @@ import { parseAppointment } from "../lib/telegram-booking.ts";
 
 test("confirmation workflow: recipient binding, owner authorization, date preview and single delivery", async (t) => {
   const names = [
+    "CALENDAR_ENABLED",
     "LEAD_INTAKE_ENABLED",
     "SUPABASE_URL",
     "SUPABASE_SECRET_KEY",
@@ -22,6 +23,7 @@ test("confirmation workflow: recipient binding, owner authorization, date previe
   ];
   const previous = Object.fromEntries(names.map((n) => [n, process.env[n]]));
   Object.assign(process.env, {
+    CALENDAR_ENABLED: "false",
     LEAD_INTAKE_ENABLED: "true",
     SUPABASE_URL: "https://db.invalid",
     SUPABASE_SECRET_KEY: "test-key",
@@ -32,7 +34,11 @@ test("confirmation workflow: recipient binding, owner authorization, date previe
     TELEGRAM_WEBHOOK_SECRET: "a".repeat(64),
   });
   const originalFetch = globalThis.fetch;
-  const tables = { leads: [], telegram_bookings: [] };
+  const tables = {
+    leads: [],
+    telegram_bookings: [],
+    calendar_appointments: [],
+  };
   const messages = [];
   let messageId = 1000,
     updateId = 0,

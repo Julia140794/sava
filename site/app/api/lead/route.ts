@@ -1,3 +1,4 @@
+import { calendarEnabled } from "@/lib/calendar";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   bookingDb,
@@ -15,6 +16,11 @@ const attempts = new Map<string, { count: number; until: number }>();
 const reply = (error: string, status: number) =>
   NextResponse.json({ error }, { status });
 export async function POST(request: NextRequest) {
+  if (calendarEnabled())
+    return reply(
+      "Запись обновилась. Обновите страницу и выберите мастера и время в календаре.",
+      409,
+    );
   const origin = request.headers.get("origin");
   const allowed = [request.nextUrl.origin, siteUrl()].filter(Boolean);
   if (

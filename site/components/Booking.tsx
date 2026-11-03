@@ -1,10 +1,29 @@
 "use client";
+import CalendarBooking from "@/components/CalendarBooking";
 import { Arrow } from "@/components/Icons";
 
 import { useEffect, useState } from "react";
 import { contact, services } from "@/lib/studio";
 export default function Booking({ ready }: { ready: boolean }) {
   const [service, setService] = useState("");
+  const [calendarMode, setCalendarMode] = useState(false);
+  const [calendarLoading, setCalendarLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    fetch("/api/calendar", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (active) setCalendarMode(data?.enabled === true);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setCalendarLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const [telegramUrl, setTelegramUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<
     "idle" | "sending" | "success" | "error"
@@ -73,6 +92,7 @@ export default function Booking({ ready }: { ready: boolean }) {
       );
     }
   }
+  if (calendarMode) return <CalendarBooking ready={ready} />;
   return (
     <form
       method="post"
@@ -173,7 +193,12 @@ export default function Booking({ ready }: { ready: boolean }) {
       <button
         className="button button-wine form-submit"
         type="submit"
-        disabled={!ready || status === "sending" || status === "success"}
+        disabled={
+          !ready ||
+          calendarLoading ||
+          status === "sending" ||
+          status === "success"
+        }
       >
         {status === "sending"
           ? "Отправляем…"

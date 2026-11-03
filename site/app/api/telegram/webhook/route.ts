@@ -1,3 +1,9 @@
+import { calendarEnabled } from "@/lib/calendar";
+import {
+  calendarAppointment,
+  calendarKeyboard,
+  cancelCalendar,
+} from "@/lib/calendar-server";
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import {
@@ -100,13 +106,17 @@ async function handle(update: Update) {
         .eq("token_hash", hash)
         .is("client_chat_id", null)
         .gt("expires_at", new Date().toISOString())
-        .select("id,service,owner_notified_at,delivery_status,appointment_at");
+        .select(
+          "id,service,owner_notified_at,delivery_status,appointment_at,preview_nonce",
+        );
       failDb(error);
       let booking = claimed?.[0];
       if (!booking) {
         const { data, error } = await db
           .from("telegram_bookings")
-          .select("id,service,owner_notified_at,delivery_status,appointment_at")
+          .select(
+            "id,service,owner_notified_at,delivery_status,appointment_at,preview_nonce",
+          )
           .eq("token_hash", hash)
           .eq("client_chat_id", String(m.chat.id))
           .maybeSingle();
@@ -120,12 +130,25 @@ async function handle(update: Update) {
         );
         return;
       }
+      const calendar = await calendarAppointment(booking.id);
+      if (calendar?.state === "cancelled") {
+        await sendText(
+          String(m.chat.id),
+          "Эта запись отменена. Выберите новое время на сайте или позвоните в студию.",
+        );
+        return;
+      }
       // Record successful owner notification; repeated Start must not spam the owner.
       if (!booking.owner_notified_at) {
         await sendText(
           owner,
           `Клиент подключил Telegram к заявке\n${await clientLabel(booking.id)}\nУслуга: ${booking.service}\nЗаявка: ${booking.id.slice(0, 8)}\nТеперь можно согласовать и подтвердить время.`,
-          { reply_markup: scheduleKeyboard(booking.id) },
+          {
+            reply_markup:
+              calendar && booking.preview_nonce
+                ? calendarKeyboard(booking.id, booking.preview_nonce)
+                : scheduleKeyboard(booking.id),
+          },
         );
         const { error } = await db
           .from("telegram_bookings")
@@ -160,12 +183,13 @@ async function handle(update: Update) {
     const confirm = new RegExp(`^confirm:(${uuid}):([a-f0-9]{16})$`).exec(
       callback.data || "",
     );
-    if (!schedule && !confirm) {
+    const cancel = new RegExp(`^cancel:(${uuid})$`).exec(callback.data || "");
+    if (!schedule && !confirm && !cancel) {
       await botCall("answerCallbackQuery", { callback_query_id: callback.id });
       return;
     }
     await botCall("answerCallbackQuery", { callback_query_id: callback.id });
-    const id = (schedule || confirm)![1];
+    const id = (schedule || confirm || cancel)![1];
     const { data: booking, error } = await db
       .from("telegram_bookings")
       .select("*")
@@ -176,6 +200,38 @@ async function handle(update: Update) {
       await sendText(
         owner,
         "Заявка не найдена. Уточните запись с клиентом по телефону.",
+      );
+      return;
+    }
+    const calendar = await calendarAppointment(id);
+    if (cancel) {
+      if (!calendar) {
+        await sendText(
+          owner,
+          "У этой заявки нет календарного слота. Для календарных записей используйте управление расписанием.",
+        );
+        return;
+      }
+      const result = await cancelCalendar(id);
+      await sendText(
+        owner,
+        result.changed
+          ? `Запись отменена, время свободно. ${result.notified ? "Клиент уведомлён в Telegram." : "Свяжитесь с клиентом по телефону при необходимости."}`
+          : "Запись уже отменена.",
+      );
+      return;
+    }
+    if (calendar?.state === "cancelled") {
+      await sendText(
+        owner,
+        "Эта календарная запись отменена. Подтверждение отправить нельзя.",
+      );
+      return;
+    }
+    if (!calendar && calendarEnabled()) {
+      await sendText(
+        owner,
+        "Это старая заявка без календарного мастера и слота. Попросите клиента выбрать время новой заявкой на сайте. Если согласуете по телефону, сначала закройте время нужного мастера в /calendar-admin.",
       );
       return;
     }
@@ -196,9 +252,19 @@ async function handle(update: Update) {
       return;
     }
     if (schedule) {
+      const exampleDate = new Date(Date.now() + 2 * 86400000);
+      if (new Date(exampleDate.getTime() + 3 * 3600000).getUTCDay() === 0)
+        exampleDate.setUTCDate(exampleDate.getUTCDate() + 1);
+      const example =
+        new Intl.DateTimeFormat("ru-BY", {
+          timeZone: "Europe/Minsk",
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        }).format(exampleDate) + " 14:30";
       const prompt = await sendText(
         owner,
-        `Услуга: ${booking.service}\n${await clientLabel(booking.id)}\nОтветьте на это сообщение датой и временем по Минску:\nДД.ММ.ГГГГ ЧЧ:ММ\nНапример: 25.10.2026 14:30\nПосле этого бот покажет подтверждение для проверки.`,
+        `Услуга: ${booking.service}\n${await clientLabel(booking.id)}\nОтветьте на это сообщение датой и временем по Минску:\nДД.ММ.ГГГГ ЧЧ:ММ\nНапример: ${example}\nПосле этого бот покажет подтверждение для проверки.`,
         {
           reply_markup: {
             force_reply: true,
@@ -219,14 +285,19 @@ async function handle(update: Update) {
       return;
     }
     // Claim one delivery. The nonce invalidates all older date previews.
-    const { data: rows, error: claimError } = await db
-      .from("telegram_bookings")
-      .update({ delivery_status: "sending" })
-      .eq("id", id)
-      .eq("delivery_status", "pending")
-      .eq("preview_nonce", confirm![2])
-      .not("appointment_at", "is", null)
-      .select("*");
+    const { data: rows, error: claimError } = calendar
+      ? await db.rpc("calendar_prepare_confirmation", {
+          p_lead: id,
+          p_nonce: confirm![2],
+        })
+      : await db
+          .from("telegram_bookings")
+          .update({ delivery_status: "sending" })
+          .eq("id", id)
+          .eq("delivery_status", "pending")
+          .eq("preview_nonce", confirm![2])
+          .not("appointment_at", "is", null)
+          .select("*");
     failDb(claimError);
     const claimed = rows?.[0];
     if (!claimed) {
@@ -280,7 +351,9 @@ async function handle(update: Update) {
   if (m && ownerMessage(m) && m.reply_to_message && m.text) {
     const { data: booking, error } = await db
       .from("telegram_bookings")
-      .select("id,service,owner_notified_at,delivery_status,appointment_at")
+      .select(
+        "id,service,owner_notified_at,delivery_status,appointment_at,preview_nonce",
+      )
       .eq("owner_prompt_id", m.reply_to_message.message_id)
       .eq("delivery_status", "pending")
       .gt("prompt_expires_at", new Date().toISOString())
@@ -300,6 +373,27 @@ async function handle(update: Update) {
         "Укажите будущую дату и время по Минску строго в формате ДД.ММ.ГГГГ ЧЧ:ММ, ответом на сообщение с запросом времени.",
       );
       return;
+    }
+    const calendar = await calendarAppointment(booking.id);
+    if (!calendar && calendarEnabled()) {
+      await sendText(
+        owner,
+        "Эта старая заявка не учитывает мастера. Создайте календарную запись или закройте время нужного мастера вручную и согласуйте визит по телефону.",
+      );
+      return;
+    }
+    if (calendar) {
+      const { error } = await db.rpc("calendar_move", {
+        p_lead: booking.id,
+        p_start: appointment,
+      });
+      if (error) {
+        await sendText(
+          owner,
+          "Это время недоступно: проверьте график, перерыв и другие записи. Выберите другое время или отмените запись через календарь.",
+        );
+        return;
+      }
     }
     const nonce = randomBytes(8).toString("hex");
     const { data: rows, error: saveError } = await db

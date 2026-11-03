@@ -6,7 +6,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/api/", "/privacy", "/telegram-setup"],
+      disallow: ["/api/", "/privacy", "/telegram-setup", "/calendar-admin"],
     },
     ...(origin ? { sitemap: `${origin}/sitemap.xml` } : {}),
   };

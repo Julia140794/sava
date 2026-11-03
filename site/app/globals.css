@@ -1502,3 +1502,96 @@ details[open] summary span {
 .privacy-page li {
   margin: 12px 0;
 }
+
+.calendar-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.slot-fieldset {
+  margin: 22px 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.slot-fieldset legend {
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.slot-fieldset p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 230px;
+  overflow: auto;
+  padding: 3px;
+}
+.slot-option {
+  position: relative;
+  display: block;
+  cursor: pointer;
+  min-width: 0;
+}
+.slot-option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px !important;
+  height: 1px;
+}
+.slot-option span {
+  display: block;
+  text-align: center;
+  padding: 10px 2px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+}
+.slot-option.is-selected span {
+  background: var(--wine);
+  color: white;
+  border-color: var(--wine);
+}
+.slot-option input:focus-visible + span {
+  outline: 2px solid var(--wine);
+  outline-offset: 2px;
+}
+.slot-option:hover span {
+  border-color: var(--wine);
+}
+.booking-form input[type="date"] {
+  min-height: 44px;
+}
+.booking-form h3 {
+  font-size: 30px;
+  margin-bottom: 20px;
+}
+.admin-appointments article {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+.admin-appointments h2 {
+  margin: 0 0 10px;
+}
+.setup-form select,
+.setup-form input[type="date"],
+.setup-form input[type="datetime-local"] {
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--muted);
+  background: white;
+  font: inherit;
+}
+.setup-form label {
+  margin-top: 15px;
+}
+
+.slot-option span {
+  min-height: 44px;
+}
+.calendar-hint {
+  line-height: 1.7;
+}
